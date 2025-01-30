@@ -1,0 +1,508 @@
+
+import pygame
+import sys
+import random
+import tkinter as tk
+from tkinter import filedialog
+import threading
+import imageio
+import time
+import webbrowser
+import numpy as np  # Fixed the numpy import
+from PIL import Image
+import io
+
+# Initialize Pygame
+pygame.init()
+
+# Error handling for Pygame initialization
+if not pygame.get_init():
+    print("Failed to initialize Pygame.")
+    sys.exit()
+
+# Game Constants
+WINDOW_SIZE = 600            # Window size in pixels
+GRID_SIZE = 20               # Number of cells in the grid (20x20)
+CELL_SIZE = WINDOW_SIZE // GRID_SIZE  # Size of each cell in pixels
+GAME_SPEED = 12              # Game speed (adjustable)
+
+# Colors (R, G, B)
+BACKGROUND_COLOR = (30, 30, 30)     # Default dark gray background
+SNAKE_COLOR = (0, 255, 127)         # Spring green snake
+FOOD_COLOR = (255, 99, 71)          # Tomato red food
+TEXT_COLOR = (240, 240, 240)        # Light gray text
+HIGHLIGHT_COLOR = (255, 215, 0)     # Gold color for selected menu item
+
+# Set up the display
+screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
+pygame.display.set_caption('Snake')
+
+# Clock to control game speed
+clock = pygame.time.Clock()
+
+# Font for rendering text
+font = pygame.font.SysFont('Segoe UI', 20)
+
+# Global variables
+background_type = 'color'  # 'color', 'image', 'gif', 'video'
+background_content = None  # Stores content based on background_type
+video_frames = []
+video_frame_index = 0
+video_frame_rate = 30  # Default video frame rate
+video_playing = False
+
+def draw_text(text, font, color, position):
+    """Render text on the screen."""
+    text_surface = font.render(text, True, color)
+    screen.blit(text_surface, position)
+
+def choose_background():
+    """Open file dialog and set custom background."""
+    global background_type, background_content, video_frames, video_frame_index, video_playing
+    
+    try:
+        # Initialize Tkinter root
+        root = tk.Tk()
+        root.withdraw()  # Hide the root window
+
+        # Open file dialog with all supported files in one category
+        file_path = filedialog.askopenfilename(
+            title="Choose Background",
+            filetypes=[
+                ("All supported files", "*.png;*.jpg;*.jpeg;*.gif;*.mp4;*.avi")
+            ]
+        )
+        
+        if not file_path:
+            return
+
+        # Handle GIF files
+        if file_path.lower().endswith('.gif'):
+            try:
+                gif = Image.open(file_path)
+                video_frames = []
+                
+                # Convert each frame to pygame surface
+                for frame_index in range(gif.n_frames):
+                    gif.seek(frame_index)
+                    frame_rgb = gif.convert('RGB')
+                    frame_data = frame_rgb.tobytes()
+                    frame_size = frame_rgb.size
+                    frame_surface = pygame.image.fromstring(frame_data, frame_size, 'RGB')
+                    scaled_surface = pygame.transform.scale(frame_surface, (WINDOW_SIZE, WINDOW_SIZE))
+                    video_frames.append(scaled_surface)
+                
+                background_type = 'gif'
+                video_frame_index = 0
+                video_playing = True
+                return
+                
+            except Exception as e:
+                print(f"Error loading GIF: {e}")
+                background_type = 'color'
+                return
+
+        # Handle video files
+        elif file_path.lower().endswith(('.mp4', '.avi')):
+            try:
+                video = imageio.get_reader(file_path)
+                video_frames = []
+                
+                # Convert first 100 frames (to prevent memory issues)
+                for i, frame in enumerate(video):
+                    if i >= 100:  # Limit frames for performance
+                        break
+                    # Convert numpy array to pygame surface
+                    frame_surface = pygame.surfarray.make_surface(np.rot90(frame))
+                    scaled_surface = pygame.transform.scale(frame_surface, (WINDOW_SIZE, WINDOW_SIZE))
+                    video_frames.append(scaled_surface)
+                
+                background_type = 'video'
+                video_frame_index = 0
+                video_playing = True
+                video.close()
+                return
+                
+            except Exception as e:
+                print(f"Error loading video: {e}")
+                background_type = 'color'
+                return
+
+        # Handle static images
+        elif file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+            try:
+                background_content = pygame.image.load(file_path)
+                background_content = pygame.transform.scale(background_content, (WINDOW_SIZE, WINDOW_SIZE))
+                background_type = 'image'
+                video_playing = False
+                return
+            except Exception as e:
+                print(f"Error loading image: {e}")
+                background_type = 'color'
+                return
+
+    except Exception as e:
+        print(f"Error in choose_background: {e}")
+        background_type = 'color'
+        background_content = None
+        video_playing = False
+    
+    finally:
+        if 'root' in locals():
+            root.destroy()
+
+def show_credits():
+    """Display the credits screen."""
+    credits = True
+    # GitHub and O1 link rectangles
+    github_link_rect = None
+    o1_link_rect = None
+
+    while credits:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                credits = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                if github_link_rect and github_link_rect.collidepoint(mouse_pos):
+                    webbrowser.open('https://github.com/pedroperry')
+                    credits = False
+                elif o1_link_rect and o1_link_rect.collidepoint(mouse_pos):
+                    webbrowser.open('https://openai.com/o1/')
+                    credits = False
+                else:
+                    credits = False
+
+        # Fill the background
+        render_background()
+
+        # Display credits text
+        credit_lines = [
+            'Credits',
+            '',
+            'Creator: pedroperry',
+            'AI Used: o1 model',
+            'Learn more about O1: openai.com/o1/',
+            '',
+            'GitHub: github.com/pedroperry',
+            '',
+            'Press any key to return'
+        ]
+        
+        for i, line in enumerate(credit_lines):
+            if i == 0:
+                line_font = pygame.font.SysFont('Segoe UI', 40)
+            else:
+                line_font = font
+            text_surface = line_font.render(line, True, TEXT_COLOR)
+            text_rect = text_surface.get_rect(center=(WINDOW_SIZE // 2, WINDOW_SIZE // 2 - 120 + i * 30))
+            screen.blit(text_surface, text_rect)
+
+            # Add underline and store rectangles for clickable links
+            if line.startswith('GitHub'):
+                pygame.draw.line(screen, HIGHLIGHT_COLOR,
+                               (text_rect.left, text_rect.bottom),
+                               (text_rect.right, text_rect.bottom), 2)
+                github_link_rect = text_rect
+            elif 'openai.com' in line:
+                pygame.draw.line(screen, HIGHLIGHT_COLOR,
+                               (text_rect.left, text_rect.bottom),
+                               (text_rect.right, text_rect.bottom), 2)
+                o1_link_rect = text_rect
+
+        pygame.display.update()
+        clock.tick(60)
+
+def render_background():
+    """Render the background based on the selected type."""
+    global video_frame_index, video_playing
+    
+    if background_type == 'color':
+        screen.fill(BACKGROUND_COLOR)
+    elif background_type == 'image' and background_content:
+        screen.blit(background_content, (0, 0))
+    elif background_type in ['gif', 'video'] and video_frames:
+        try:
+            # Display the current frame
+            screen.blit(video_frames[video_frame_index], (0, 0))
+            # Update frame index
+            if video_playing:
+                video_frame_index = (video_frame_index + 1) % len(video_frames)
+        except Exception as e:
+            print(f"Error rendering frame: {e}")
+            screen.fill(BACKGROUND_COLOR)
+    else:
+        screen.fill(BACKGROUND_COLOR)
+
+def main_menu():
+    """Display the main menu with animation and keyboard navigation."""
+    menu = True
+    # Menu options
+    menu_items = ['Start Game', 'Customize Background', 'Credits', 'Exit']
+    selected_item = 0
+
+    # Animation variables
+    snake_animation_pos = 0
+    snake_animation_speed = 2  # Speed of the animated snake
+    snake_animation_length = 5  # Number of segments in the animated snake
+    snake_animation_body = []
+
+    while menu:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            # Handle key presses
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    selected_item = (selected_item - 1) % len(menu_items)
+                elif event.key == pygame.K_DOWN:
+                    selected_item = (selected_item + 1) % len(menu_items)
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                    if menu_items[selected_item] == 'Start Game':
+                        menu = False
+                    elif menu_items[selected_item] == 'Customize Background':
+                        choose_background()
+                    elif menu_items[selected_item] == 'Credits':
+                        show_credits()
+                    elif menu_items[selected_item] == 'Exit':
+                        pygame.quit()
+                        sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                # Check if any menu item is clicked
+                for index, item in enumerate(menu_items):
+                    item_position = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + index * 40)
+                    text_surface = font.render(item, True, TEXT_COLOR)
+                    text_rect = text_surface.get_rect(center=item_position)
+                    if text_rect.collidepoint(mouse_pos):
+                        selected_item = index
+                        if menu_items[selected_item] == 'Start Game':
+                            menu = False
+                        elif menu_items[selected_item] == 'Customize Background':
+                            choose_background()
+                        elif menu_items[selected_item] == 'Credits':
+                            show_credits()
+                        elif menu_items[selected_item] == 'Exit':
+                            pygame.quit()
+                            sys.exit()
+
+        # Update animation
+        snake_animation_pos += snake_animation_speed
+        if snake_animation_pos > WINDOW_SIZE + snake_animation_length * CELL_SIZE:
+            snake_animation_pos = -snake_animation_length * CELL_SIZE
+        # Update snake body positions for animation
+        snake_animation_body = []
+        for i in range(snake_animation_length):
+            x = snake_animation_pos - i * CELL_SIZE
+            y = WINDOW_SIZE // 2 - 120
+            snake_animation_body.append((x, y))
+
+        # Render background
+        render_background()
+
+        # Draw animated snake
+        for pos in snake_animation_body:
+            segment_rect = pygame.Rect(pos[0], pos[1], CELL_SIZE, CELL_SIZE)
+            pygame.draw.rect(screen, SNAKE_COLOR, segment_rect, border_radius=CELL_SIZE // 2)
+
+        # Draw title
+        title_text = 'Snake Game'
+        title_font = pygame.font.SysFont('Segoe UI', 50)
+        title_position = (WINDOW_SIZE // 2 - title_font.size(title_text)[0] // 2, WINDOW_SIZE // 2 - 170)
+        draw_text(title_text, title_font, SNAKE_COLOR, title_position)
+
+        # Draw menu items
+        for index, item in enumerate(menu_items):
+            if index == selected_item:
+                color = HIGHLIGHT_COLOR
+            else:
+                color = TEXT_COLOR
+            item_position = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + index * 40)
+            text_surface = font.render(item, True, color)
+            text_rect = text_surface.get_rect(center=item_position)
+            screen.blit(text_surface, text_rect)
+
+        pygame.display.update()
+        clock.tick(60)
+
+def main():
+    """Main function to run the game."""
+    while True:
+        main_menu()
+
+        # Initialize game variables
+        snake_pos = [GRID_SIZE // 2, GRID_SIZE // 2]
+        snake_body = [
+            [snake_pos[0], snake_pos[1]],
+            [snake_pos[0] - 1, snake_pos[1]],
+            [snake_pos[0] - 2, snake_pos[1]]
+        ]
+        direction = 'RIGHT'
+        change_to = direction
+        food_pos = [
+            random.randint(0, GRID_SIZE - 1),
+            random.randint(0, GRID_SIZE - 1)
+        ]
+        while food_pos in snake_body:
+            food_pos = [
+                random.randint(0, GRID_SIZE - 1),
+                random.randint(0, GRID_SIZE - 1)
+            ]
+        food_spawn = True
+        score = 0
+
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key in [pygame.K_UP, pygame.K_w] and direction != 'DOWN':
+                        change_to = 'UP'
+                    elif event.key in [pygame.K_DOWN, pygame.K_s] and direction != 'UP':
+                        change_to = 'DOWN'
+                    elif event.key in [pygame.K_LEFT, pygame.K_a] and direction != 'RIGHT':
+                        change_to = 'LEFT'
+                    elif event.key in [pygame.K_RIGHT, pygame.K_d] and direction != 'LEFT':
+                        change_to = 'RIGHT'
+
+            # Update direction
+            if change_to != direction:
+                direction = change_to
+
+            # Move the snake
+            if direction == 'UP':
+                snake_pos[1] -= 1
+            elif direction == 'DOWN':
+                snake_pos[1] += 1
+            elif direction == 'LEFT':
+                snake_pos[0] -= 1
+            elif direction == 'RIGHT':
+                snake_pos[0] += 1
+
+            # Snake body growing mechanism
+            snake_body.insert(0, list(snake_pos))
+            if snake_pos == food_pos:
+                score += 1
+                food_spawn = False
+            else:
+                snake_body.pop()
+
+            # Spawn new food
+            if not food_spawn:
+                food_pos = [
+                    random.randint(0, GRID_SIZE - 1),
+                    random.randint(0, GRID_SIZE - 1)
+                ]
+                while food_pos in snake_body:
+                    food_pos = [
+                        random.randint(0, GRID_SIZE - 1),
+                        random.randint(0, GRID_SIZE - 1)
+                    ]
+                food_spawn = True
+
+            # Render background
+            render_background()
+
+            # Draw the snake with rounded segments
+            for segment in snake_body:
+                segment_rect = pygame.Rect(
+                    segment[0] * CELL_SIZE,
+                    segment[1] * CELL_SIZE,
+                    CELL_SIZE,
+                    CELL_SIZE
+                )
+                pygame.draw.rect(screen, SNAKE_COLOR, segment_rect, border_radius=CELL_SIZE // 2)
+
+            # Draw the food as a circle
+            food_center = (
+                food_pos[0] * CELL_SIZE + CELL_SIZE // 2,
+                food_pos[1] * CELL_SIZE + CELL_SIZE // 2
+            )
+            pygame.draw.circle(screen, FOOD_COLOR, food_center, CELL_SIZE // 2)
+
+            # Check for collisions
+            if (snake_pos[0] < 0 or snake_pos[0] >= GRID_SIZE or
+                snake_pos[1] < 0 or snake_pos[1] >= GRID_SIZE):
+                running = False  # Collision with wall
+            if snake_pos in snake_body[1:]:
+                running = False  # Collision with self
+
+            # Display the score
+            score_text = f'Score: {score}'
+            text_position = (WINDOW_SIZE - 10 - font.size(score_text)[0], 10)
+            draw_text(score_text, font, TEXT_COLOR, text_position)
+
+            pygame.display.update()
+            clock.tick(GAME_SPEED)
+
+        # Game over screen
+        game_over(score)
+
+def game_over(score):
+    """Display the game over screen."""
+    global video_playing
+    video_playing = False  # Stop video playback during game over
+
+    # Fade effect variables
+    alpha_surface = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE))
+    alpha_surface.fill((0, 0, 0))
+    alpha = 0
+
+    # Animate fade-in
+    while alpha < 180:
+        alpha += 5
+        alpha_surface.set_alpha(alpha)
+        screen.blit(alpha_surface, (0, 0))
+        pygame.display.update()
+        clock.tick(60)
+
+    # Game over loop
+    game_over_screen = True
+    while game_over_screen:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            # Return to main menu on 'R' key press
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    game_over_screen = False
+                elif event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit()
+        # Render background
+        render_background()
+
+        # Darken the screen
+        overlay = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        screen.blit(overlay, (0, 0))
+
+        # Display game over message
+        game_over_text = 'Game Over'
+        game_over_font = pygame.font.SysFont('Segoe UI', 50)
+        game_over_position = (WINDOW_SIZE // 2 - game_over_font.size(game_over_text)[0] // 2, WINDOW_SIZE // 2 - 50)
+        draw_text(game_over_text, game_over_font, FOOD_COLOR, game_over_position)
+
+        # Display final score
+        final_score_text = f'Final Score: {score}'
+        final_score_position = (WINDOW_SIZE // 2 - font.size(final_score_text)[0] // 2, WINDOW_SIZE // 2)
+        draw_text(final_score_text, font, TEXT_COLOR, final_score_position)
+
+        # Display instruction to restart or exit
+        restart_text = 'Press R to Restart or ESC to Exit'
+        restart_position = (WINDOW_SIZE // 2 - font.size(restart_text)[0] // 2, WINDOW_SIZE // 2 + 50)
+        draw_text(restart_text, font, TEXT_COLOR, restart_position)
+
+        pygame.display.update()
+        clock.tick(60)
+
+if __name__ == '__main__':
+    main()

@@ -9,7 +9,7 @@ A modern Python Snake game with customizable backgrounds, animated menus, and sm
 [![GitHub](https://img.shields.io/badge/GitHub-Pedroperry-blue?style=flat&logo=github)](https://github.com/pedroperry)
 [![O1](https://img.shields.io/badge/Assisted%20by-O1_Model-important?style=flat&logo=openai&logoColor=white)](https://openai.com/o1/)
 
-![Menu](https://github.com/user-attachments/assets/d2dbf60e-4890-4336-9f95-e80f4f51c976)
+
 ![Game Over](https://github.com/user-attachments/assets/e28f6a0b-3604-4573-9dfe-cd71c68f0285)
 ## 🌟 Features
 

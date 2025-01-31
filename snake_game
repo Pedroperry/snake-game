@@ -1,4 +1,3 @@
-
 import pygame
 import sys
 import random
@@ -8,14 +7,12 @@ import threading
 import imageio
 import time
 import webbrowser
-import numpy as np  # Fixed the numpy import
+import numpy as np
 from PIL import Image
 import io
 
 # Initialize Pygame
 pygame.init()
-
-# Error handling for Pygame initialization
 if not pygame.get_init():
     print("Failed to initialize Pygame.")
     sys.exit()
@@ -28,7 +25,8 @@ GAME_SPEED = 12              # Game speed (adjustable)
 
 # Colors (R, G, B)
 BACKGROUND_COLOR = (30, 30, 30)     # Default dark gray background
-SNAKE_COLOR = (0, 255, 127)         # Spring green snake
+SNAKE_COLOR = (0, 255, 127)         # Spring green snake (player 1)
+SNAKE2_COLOR = (70, 130, 180)       # Steel blue snake (player 2 or AI)
 FOOD_COLOR = (255, 99, 71)          # Tomato red food
 TEXT_COLOR = (240, 240, 240)        # Light gray text
 HIGHLIGHT_COLOR = (255, 215, 0)     # Gold color for selected menu item
@@ -43,7 +41,7 @@ clock = pygame.time.Clock()
 # Font for rendering text
 font = pygame.font.SysFont('Segoe UI', 20)
 
-# Global variables
+# Global variables for background customization
 background_type = 'color'  # 'color', 'image', 'gif', 'video'
 background_content = None  # Stores content based on background_type
 video_frames = []
@@ -51,9 +49,12 @@ video_frame_index = 0
 video_frame_rate = 30  # Default video frame rate
 video_playing = False
 
-def draw_text(text, font, color, position):
+# Global particle list for additional animations in the main menu
+particles = []
+
+def draw_text(text, font_obj, color, position):
     """Render text on the screen."""
-    text_surface = font.render(text, True, color)
+    text_surface = font_obj.render(text, True, color)
     screen.blit(text_surface, position)
 
 def choose_background():
@@ -61,11 +62,9 @@ def choose_background():
     global background_type, background_content, video_frames, video_frame_index, video_playing
     
     try:
-        # Initialize Tkinter root
         root = tk.Tk()
-        root.withdraw()  # Hide the root window
+        root.withdraw()  # Hide the Tkinter root window
 
-        # Open file dialog with all supported files in one category
         file_path = filedialog.askopenfilename(
             title="Choose Background",
             filetypes=[
@@ -81,8 +80,6 @@ def choose_background():
             try:
                 gif = Image.open(file_path)
                 video_frames = []
-                
-                # Convert each frame to pygame surface
                 for frame_index in range(gif.n_frames):
                     gif.seek(frame_index)
                     frame_rgb = gif.convert('RGB')
@@ -91,7 +88,6 @@ def choose_background():
                     frame_surface = pygame.image.fromstring(frame_data, frame_size, 'RGB')
                     scaled_surface = pygame.transform.scale(frame_surface, (WINDOW_SIZE, WINDOW_SIZE))
                     video_frames.append(scaled_surface)
-                
                 background_type = 'gif'
                 video_frame_index = 0
                 video_playing = True
@@ -107,16 +103,12 @@ def choose_background():
             try:
                 video = imageio.get_reader(file_path)
                 video_frames = []
-                
-                # Convert first 100 frames (to prevent memory issues)
                 for i, frame in enumerate(video):
-                    if i >= 100:  # Limit frames for performance
+                    if i >= 100:
                         break
-                    # Convert numpy array to pygame surface
                     frame_surface = pygame.surfarray.make_surface(np.rot90(frame))
                     scaled_surface = pygame.transform.scale(frame_surface, (WINDOW_SIZE, WINDOW_SIZE))
                     video_frames.append(scaled_surface)
-                
                 background_type = 'video'
                 video_frame_index = 0
                 video_playing = True
@@ -154,7 +146,6 @@ def choose_background():
 def show_credits():
     """Display the credits screen."""
     credits = True
-    # GitHub and O1 link rectangles
     github_link_rect = None
     o1_link_rect = None
 
@@ -176,10 +167,8 @@ def show_credits():
                 else:
                     credits = False
 
-        # Fill the background
         render_background()
 
-        # Display credits text
         credit_lines = [
             'Credits',
             '',
@@ -201,7 +190,6 @@ def show_credits():
             text_rect = text_surface.get_rect(center=(WINDOW_SIZE // 2, WINDOW_SIZE // 2 - 120 + i * 30))
             screen.blit(text_surface, text_rect)
 
-            # Add underline and store rectangles for clickable links
             if line.startswith('GitHub'):
                 pygame.draw.line(screen, HIGHLIGHT_COLOR,
                                (text_rect.left, text_rect.bottom),
@@ -226,9 +214,7 @@ def render_background():
         screen.blit(background_content, (0, 0))
     elif background_type in ['gif', 'video'] and video_frames:
         try:
-            # Display the current frame
             screen.blit(video_frames[video_frame_index], (0, 0))
-            # Update frame index
             if video_playing:
                 video_frame_index = (video_frame_index + 1) % len(video_frames)
         except Exception as e:
@@ -237,33 +223,68 @@ def render_background():
     else:
         screen.fill(BACKGROUND_COLOR)
 
+# --- Particle functions for extra animations in the main menu ---
+
+def update_particles():
+    """Update particle positions and remove faded ones."""
+    global particles
+    for p in particles[:]:
+        p['y'] -= p['speed']
+        p['radius'] -= 0.05
+        p['life'] -= 1
+        if p['life'] <= 0 or p['radius'] <= 0:
+            particles.remove(p)
+
+def draw_particles():
+    """Draw particles as circles with alpha."""
+    for p in particles:
+        surface = pygame.Surface((p['radius']*2, p['radius']*2), pygame.SRCALPHA)
+        pygame.draw.circle(surface, (255, 255, 255, int(p['alpha'])), (int(p['radius']), int(p['radius'])), int(p['radius']))
+        screen.blit(surface, (p['x'], p['y']))
+
+def spawn_particle():
+    """Spawn a new particle at a random position near the bottom of the screen."""
+    particle = {
+        'x': random.randint(0, WINDOW_SIZE),
+        'y': WINDOW_SIZE,
+        'radius': random.uniform(2, 6),
+        'speed': random.uniform(0.5, 1.5),
+        'alpha': random.uniform(100, 255),
+        'life': random.randint(50, 100)
+    }
+    particles.append(particle)
+
 def main_menu():
     """Display the main menu with animation and keyboard navigation."""
     menu = True
-    # Menu options
-    menu_items = ['Start Game', 'Customize Background', 'Credits', 'Exit']
+    menu_items = ['Start Game', 'Multiplayer', 'Customize Background', 'Credits', 'Exit']
     selected_item = 0
 
-    # Animation variables
+    # Animation variables for title snake
     snake_animation_pos = 0
-    snake_animation_speed = 2  # Speed of the animated snake
-    snake_animation_length = 5  # Number of segments in the animated snake
+    snake_animation_speed = 2  
+    snake_animation_length = 5  
     snake_animation_body = []
+
+    # Variables for title pulsation
+    title_scale = 1.0
+    scale_direction = 0.005
 
     while menu:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            # Handle key presses
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
                     selected_item = (selected_item - 1) % len(menu_items)
                 elif event.key == pygame.K_DOWN:
                     selected_item = (selected_item + 1) % len(menu_items)
-                elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
                     if menu_items[selected_item] == 'Start Game':
                         menu = False
+                    elif menu_items[selected_item] == 'Multiplayer':
+                        multiplayer_setup_menu()  # Go to multiplayer setup submenu
                     elif menu_items[selected_item] == 'Customize Background':
                         choose_background()
                     elif menu_items[selected_item] == 'Credits':
@@ -273,7 +294,6 @@ def main_menu():
                         sys.exit()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_pos = event.pos
-                # Check if any menu item is clicked
                 for index, item in enumerate(menu_items):
                     item_position = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + index * 40)
                     text_surface = font.render(item, True, TEXT_COLOR)
@@ -282,6 +302,8 @@ def main_menu():
                         selected_item = index
                         if menu_items[selected_item] == 'Start Game':
                             menu = False
+                        elif menu_items[selected_item] == 'Multiplayer':
+                            multiplayer_setup_menu()
                         elif menu_items[selected_item] == 'Customize Background':
                             choose_background()
                         elif menu_items[selected_item] == 'Credits':
@@ -290,37 +312,45 @@ def main_menu():
                             pygame.quit()
                             sys.exit()
 
-        # Update animation
+        # Update animated snake for title
         snake_animation_pos += snake_animation_speed
         if snake_animation_pos > WINDOW_SIZE + snake_animation_length * CELL_SIZE:
             snake_animation_pos = -snake_animation_length * CELL_SIZE
-        # Update snake body positions for animation
         snake_animation_body = []
         for i in range(snake_animation_length):
             x = snake_animation_pos - i * CELL_SIZE
             y = WINDOW_SIZE // 2 - 120
             snake_animation_body.append((x, y))
 
-        # Render background
-        render_background()
+        # Spawn and update particles
+        if random.random() < 0.3:
+            spawn_particle()
+        update_particles()
 
-        # Draw animated snake
+        render_background()
+        draw_particles()
+
+        # Draw animated snake for title
         for pos in snake_animation_body:
             segment_rect = pygame.Rect(pos[0], pos[1], CELL_SIZE, CELL_SIZE)
             pygame.draw.rect(screen, SNAKE_COLOR, segment_rect, border_radius=CELL_SIZE // 2)
 
-        # Draw title
+        # Update title pulsation
+        title_scale += scale_direction
+        if title_scale > 1.05 or title_scale < 0.95:
+            scale_direction *= -1
+
         title_text = 'Snake Game'
-        title_font = pygame.font.SysFont('Segoe UI', 50)
-        title_position = (WINDOW_SIZE // 2 - title_font.size(title_text)[0] // 2, WINDOW_SIZE // 2 - 170)
-        draw_text(title_text, title_font, SNAKE_COLOR, title_position)
+        base_title_font = pygame.font.SysFont('Segoe UI', 50)
+        title_surface = base_title_font.render(title_text, True, SNAKE_COLOR)
+        scaled_size = (int(title_surface.get_width() * title_scale), int(title_surface.get_height() * title_scale))
+        title_surface = pygame.transform.smoothscale(title_surface, scaled_size)
+        title_position = (WINDOW_SIZE // 2 - title_surface.get_width() // 2, WINDOW_SIZE // 2 - 170)
+        screen.blit(title_surface, title_position)
 
         # Draw menu items
         for index, item in enumerate(menu_items):
-            if index == selected_item:
-                color = HIGHLIGHT_COLOR
-            else:
-                color = TEXT_COLOR
+            color = HIGHLIGHT_COLOR if index == selected_item else TEXT_COLOR
             item_position = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + index * 40)
             text_surface = font.render(item, True, color)
             text_rect = text_surface.get_rect(center=item_position)
@@ -329,12 +359,414 @@ def main_menu():
         pygame.display.update()
         clock.tick(60)
 
+def multiplayer_setup_menu():
+    """
+    Display a submenu to choose multiplayer options:
+      - Play with AI (with a difficulty selection submenu)
+      - Two Player (local multiplayer)
+    """
+    sub_menu = True
+    options = ['Play with AI', 'Two Player', 'Back']
+    selected = 0
+
+    while sub_menu:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    selected = (selected - 1) % len(options)
+                elif event.key == pygame.K_DOWN:
+                    selected = (selected + 1) % len(options)
+                elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
+                    if options[selected] == 'Play with AI':
+                        ai_difficulty_menu()  # further submenu to choose difficulty
+                    elif options[selected] == 'Two Player':
+                        multiplayer_game(mode='local')
+                    elif options[selected] == 'Back':
+                        sub_menu = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                for idx, option in enumerate(options):
+                    pos = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + idx * 40)
+                    text_surface = font.render(option, True, TEXT_COLOR)
+                    text_rect = text_surface.get_rect(center=pos)
+                    if text_rect.collidepoint(mouse_pos):
+                        selected = idx
+                        if option == 'Play with AI':
+                            ai_difficulty_menu()
+                        elif option == 'Two Player':
+                            multiplayer_game(mode='local')
+                        elif option == 'Back':
+                            sub_menu = False
+
+        render_background()
+        title = "Multiplayer Options"
+        title_font = pygame.font.SysFont('Segoe UI', 40)
+        title_surface = title_font.render(title, True, SNAKE_COLOR)
+        screen.blit(title_surface, (WINDOW_SIZE // 2 - title_font.size(title)[0] // 2, WINDOW_SIZE // 2 - 100))
+
+        for idx, option in enumerate(options):
+            color = HIGHLIGHT_COLOR if idx == selected else TEXT_COLOR
+            pos = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + idx * 40)
+            text_surface = font.render(option, True, color)
+            text_rect = text_surface.get_rect(center=pos)
+            screen.blit(text_surface, text_rect)
+
+        pygame.display.update()
+        clock.tick(60)
+
+def ai_difficulty_menu():
+    """
+    Display submenu for AI difficulty selection: Easy, Normal, Hard.
+    Then start the multiplayer game in AI mode.
+    """
+    sub_menu = True
+    options = ['Easy', 'Normal', 'Hard', 'Back']
+    selected = 0
+
+    while sub_menu:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    selected = (selected - 1) % len(options)
+                elif event.key == pygame.K_DOWN:
+                    selected = (selected + 1) % len(options)
+                elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
+                    if options[selected] == 'Back':
+                        sub_menu = False
+                    else:
+                        multiplayer_game(mode='ai', difficulty=options[selected])
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                for idx, option in enumerate(options):
+                    pos = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + idx * 40)
+                    text_surface = font.render(option, True, TEXT_COLOR)
+                    text_rect = text_surface.get_rect(center=pos)
+                    if text_rect.collidepoint(mouse_pos):
+                        selected = idx
+                        if option == 'Back':
+                            sub_menu = False
+                        else:
+                            multiplayer_game(mode='ai', difficulty=option)
+
+        render_background()
+        title = "Select AI Difficulty"
+        title_font = pygame.font.SysFont('Segoe UI', 40)
+        title_surface = title_font.render(title, True, SNAKE2_COLOR)
+        screen.blit(title_surface, (WINDOW_SIZE // 2 - title_font.size(title)[0] // 2, WINDOW_SIZE // 2 - 100))
+
+        for idx, option in enumerate(options):
+            color = HIGHLIGHT_COLOR if idx == selected else TEXT_COLOR
+            pos = (WINDOW_SIZE // 2, WINDOW_SIZE // 2 + idx * 40)
+            text_surface = font.render(option, True, color)
+            text_rect = text_surface.get_rect(center=pos)
+            screen.blit(text_surface, text_rect)
+
+        pygame.display.update()
+        clock.tick(60)
+
+def get_safe_moves(snake_head, current_dir, snake_body, other_snake_body):
+    """
+    Return a list of safe directions (as strings) for the snake head.
+    Avoid moving into walls or colliding with any snake body.
+    """
+    possible_dirs = ['UP', 'DOWN', 'LEFT', 'RIGHT']
+    safe_moves = []
+    for direction in possible_dirs:
+        new_head = snake_head.copy()
+        if direction == 'UP':
+            new_head[1] -= 1
+        elif direction == 'DOWN':
+            new_head[1] += 1
+        elif direction == 'LEFT':
+            new_head[0] -= 1
+        elif direction == 'RIGHT':
+            new_head[0] += 1
+        
+        # Check wall collision
+        if new_head[0] < 0 or new_head[0] >= GRID_SIZE or new_head[1] < 0 or new_head[1] >= GRID_SIZE:
+            continue
+        # Check collision with self or opponent
+        if new_head in snake_body or new_head in other_snake_body:
+            continue
+        safe_moves.append(direction)
+    return safe_moves
+
+def ai_choose_direction(snake_head, current_dir, snake_body, other_snake_body, food_pos, difficulty='Normal'):
+    """
+    Choose a safe direction for the AI snake that minimizes the Manhattan distance to the food.
+    The 'difficulty' setting adjusts the probability of choosing the optimal move.
+    """
+    safe_moves = get_safe_moves(snake_head, current_dir, snake_body, other_snake_body)
+    if not safe_moves:
+        return current_dir  # no safe moves; continue in current direction
+
+    # Compute Manhattan distances for each safe move
+    move_distances = {}
+    for move in safe_moves:
+        new_head = snake_head.copy()
+        if move == 'UP':
+            new_head[1] -= 1
+        elif move == 'DOWN':
+            new_head[1] += 1
+        elif move == 'LEFT':
+            new_head[0] -= 1
+        elif move == 'RIGHT':
+            new_head[0] += 1
+        dist = abs(new_head[0] - food_pos[0]) + abs(new_head[1] - food_pos[1])
+        move_distances[move] = dist
+
+    # Get the best (minimum distance) move(s)
+    min_distance = min(move_distances.values())
+    best_moves = [move for move, dist in move_distances.items() if dist == min_distance]
+
+    # Set probability of choosing the optimal move based on difficulty
+    if difficulty == 'Easy':
+        optimal_prob = 0.5
+    elif difficulty == 'Normal':
+        optimal_prob = 0.8
+    elif difficulty == 'Hard':
+        optimal_prob = 1.0
+    else:
+        optimal_prob = 0.8
+
+    if random.random() < optimal_prob:
+        return random.choice(best_moves)
+    else:
+        return random.choice(safe_moves)
+
+def multiplayer_game(mode='local', difficulty='Normal'):
+    """
+    Run the multiplayer game.
+    mode: 'local' for two human players; 'ai' for player vs AI.
+    difficulty: used only for AI mode.
+    Controls:
+      - Player 1 (left snake): arrow keys.
+      - Player 2 (right snake) if local: WASD.
+    """
+    # Initialize player snakes
+    snake1_pos = [GRID_SIZE // 4, GRID_SIZE // 2]
+    snake1_body = [
+        [snake1_pos[0], snake1_pos[1]],
+        [snake1_pos[0] - 1, snake1_pos[1]],
+        [snake1_pos[0] - 2, snake1_pos[1]]
+    ]
+    dir1 = 'RIGHT'
+    change_dir1 = dir1
+
+    snake2_pos = [3 * GRID_SIZE // 4, GRID_SIZE // 2]
+    snake2_body = [
+        [snake2_pos[0], snake2_pos[1]],
+        [snake2_pos[0] + 1, snake2_pos[1]],
+        [snake2_pos[0] + 2, snake2_pos[1]]
+    ]
+    dir2 = 'LEFT'
+    change_dir2 = dir2
+
+    def spawn_food():
+        pos = [random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)]
+        while pos in snake1_body or pos in snake2_body:
+            pos = [random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)]
+        return pos
+
+    food_pos = spawn_food()
+    food_spawn = True
+    score1 = 0
+    score2 = 0
+    game_over_flag = False
+    winner = None
+
+    # Game loop
+    while not game_over_flag:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            # Player 1 controls: arrow keys
+            elif event.type == pygame.KEYDOWN:
+                if event.key in [pygame.K_UP] and dir1 != 'DOWN':
+                    change_dir1 = 'UP'
+                elif event.key in [pygame.K_DOWN] and dir1 != 'UP':
+                    change_dir1 = 'DOWN'
+                elif event.key in [pygame.K_LEFT] and dir1 != 'RIGHT':
+                    change_dir1 = 'LEFT'
+                elif event.key in [pygame.K_RIGHT] and dir1 != 'LEFT':
+                    change_dir1 = 'RIGHT'
+                # For local two-player: Player 2 uses WASD
+                if mode == 'local':
+                    if event.key in [pygame.K_w] and dir2 != 'DOWN':
+                        change_dir2 = 'UP'
+                    elif event.key in [pygame.K_s] and dir2 != 'UP':
+                        change_dir2 = 'DOWN'
+                    elif event.key in [pygame.K_a] and dir2 != 'RIGHT':
+                        change_dir2 = 'LEFT'
+                    elif event.key in [pygame.K_d] and dir2 != 'LEFT':
+                        change_dir2 = 'RIGHT'
+        
+        # For AI mode, determine snake2 direction
+        if mode == 'ai':
+            change_dir2 = ai_choose_direction(snake2_pos, dir2, snake2_body, snake1_body, food_pos, difficulty)
+
+        dir1 = change_dir1
+        dir2 = change_dir2
+
+        # Move snake 1
+        if dir1 == 'UP':
+            snake1_pos[1] -= 1
+        elif dir1 == 'DOWN':
+            snake1_pos[1] += 1
+        elif dir1 == 'LEFT':
+            snake1_pos[0] -= 1
+        elif dir1 == 'RIGHT':
+            snake1_pos[0] += 1
+
+        # Move snake 2
+        if dir2 == 'UP':
+            snake2_pos[1] -= 1
+        elif dir2 == 'DOWN':
+            snake2_pos[1] += 1
+        elif dir2 == 'LEFT':
+            snake2_pos[0] -= 1
+        elif dir2 == 'RIGHT':
+            snake2_pos[0] += 1
+
+        snake1_body.insert(0, list(snake1_pos))
+        snake2_body.insert(0, list(snake2_pos))
+
+        # Check if any snake ate the food
+        if snake1_pos == food_pos:
+            score1 += 1
+            food_spawn = False
+        else:
+            snake1_body.pop()
+
+        if snake2_pos == food_pos:
+            score2 += 1
+            food_spawn = False
+        else:
+            snake2_body.pop()
+
+        if not food_spawn:
+            food_pos = spawn_food()
+            food_spawn = True
+
+        # Check collisions for snake 1
+        if (snake1_pos[0] < 0 or snake1_pos[0] >= GRID_SIZE or
+            snake1_pos[1] < 0 or snake1_pos[1] >= GRID_SIZE or
+            snake1_pos in snake1_body[1:] or
+            snake1_pos in snake2_body):
+            game_over_flag = True
+            winner = "Player 2" if mode == 'local' else "AI"
+
+        # Check collisions for snake 2
+        if (snake2_pos[0] < 0 or snake2_pos[0] >= GRID_SIZE or
+            snake2_pos[1] < 0 or snake2_pos[1] >= GRID_SIZE or
+            snake2_pos in snake2_body[1:] or
+            snake2_pos in snake1_body):
+            game_over_flag = True
+            winner = "Player 1"
+
+        # If both collide simultaneously, it is a tie.
+        if ((snake1_pos[0] < 0 or snake1_pos[0] >= GRID_SIZE or
+             snake1_pos[1] < 0 or snake1_pos[1] >= GRID_SIZE or
+             snake1_pos in snake1_body[1:] or
+             snake1_pos in snake2_body) and 
+            (snake2_pos[0] < 0 or snake2_pos[0] >= GRID_SIZE or
+             snake2_pos[1] < 0 or snake2_pos[1] >= GRID_SIZE or
+             snake2_pos in snake2_body[1:] or
+             snake2_pos in snake1_body)):
+            game_over_flag = True
+            winner = "Tie"
+
+        render_background()
+
+        # Draw food
+        food_center = (food_pos[0] * CELL_SIZE + CELL_SIZE // 2, food_pos[1] * CELL_SIZE + CELL_SIZE // 2)
+        pygame.draw.circle(screen, FOOD_COLOR, food_center, CELL_SIZE // 2)
+
+        # Draw snake 1
+        for segment in snake1_body:
+            segment_rect = pygame.Rect(segment[0] * CELL_SIZE, segment[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+            pygame.draw.rect(screen, SNAKE_COLOR, segment_rect, border_radius=CELL_SIZE // 2)
+
+        # Draw snake 2 (or AI)
+        for segment in snake2_body:
+            segment_rect = pygame.Rect(segment[0] * CELL_SIZE, segment[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+            pygame.draw.rect(screen, SNAKE2_COLOR, segment_rect, border_radius=CELL_SIZE // 2)
+
+        # Display scores
+        score_text1 = f'P1 Score: {score1}'
+        if mode == 'local':
+            score_text2 = f'P2 Score: {score2}'
+        else:
+            score_text2 = f'AI Score: {score2} ({difficulty})'
+        draw_text(score_text1, font, TEXT_COLOR, (10, 10))
+        draw_text(score_text2, font, TEXT_COLOR, (WINDOW_SIZE - 10 - font.size(score_text2)[0], 10))
+
+        pygame.display.update()
+        clock.tick(GAME_SPEED)
+
+    multiplayer_game_over(winner, score1, score2, mode, difficulty)
+
+def multiplayer_game_over(winner, score1, score2, mode, difficulty):
+    """Display the multiplayer game over screen and preserve the mode/difficulty for retry."""
+    overlay = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE))
+    overlay.fill((0, 0, 0))
+    alpha = 0
+
+    while alpha < 180:
+        alpha += 5
+        overlay.set_alpha(alpha)
+        render_background()
+        screen.blit(overlay, (0, 0))
+        pygame.display.update()
+        clock.tick(60)
+
+    game_over_screen = True
+    while game_over_screen:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                # Press R to restart multiplayer with same mode/difficulty, ESC to exit to main menu.
+                if event.key == pygame.K_r:
+                    game_over_screen = False
+                    multiplayer_game(mode=mode, difficulty=difficulty)
+                    return
+                elif event.key == pygame.K_ESCAPE:
+                    game_over_screen = False
+
+        render_background()
+        overlay.set_alpha(180)
+        screen.blit(overlay, (0, 0))
+
+        result_text = f'Winner: {winner}' if winner != "Tie" else "It\'s a Tie!"
+        result_font = pygame.font.SysFont('Segoe UI', 50)
+        result_pos = (WINDOW_SIZE // 2 - result_font.size(result_text)[0] // 2, WINDOW_SIZE // 2 - 50)
+        draw_text(result_text, result_font, FOOD_COLOR, result_pos)
+
+        final_scores = f'P1: {score1}   P2: {score2}'
+        score_pos = (WINDOW_SIZE // 2 - font.size(final_scores)[0] // 2, WINDOW_SIZE // 2)
+        draw_text(final_scores, font, TEXT_COLOR, score_pos)
+
+        instruct_text = 'Press R to Restart or ESC to return to Menu'
+        instruct_pos = (WINDOW_SIZE // 2 - font.size(instruct_text)[0] // 2, WINDOW_SIZE // 2 + 50)
+        draw_text(instruct_text, font, TEXT_COLOR, instruct_pos)
+
+        pygame.display.update()
+        clock.tick(60)
+
 def main():
     """Main function to run the game."""
     while True:
         main_menu()
-
-        # Initialize game variables
+        # Single player game (original mode)
         snake_pos = [GRID_SIZE // 2, GRID_SIZE // 2]
         snake_body = [
             [snake_pos[0], snake_pos[1]],
@@ -343,15 +775,9 @@ def main():
         ]
         direction = 'RIGHT'
         change_to = direction
-        food_pos = [
-            random.randint(0, GRID_SIZE - 1),
-            random.randint(0, GRID_SIZE - 1)
-        ]
+        food_pos = [random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)]
         while food_pos in snake_body:
-            food_pos = [
-                random.randint(0, GRID_SIZE - 1),
-                random.randint(0, GRID_SIZE - 1)
-            ]
+            food_pos = [random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)]
         food_spawn = True
         score = 0
 
@@ -371,11 +797,9 @@ def main():
                     elif event.key in [pygame.K_RIGHT, pygame.K_d] and direction != 'LEFT':
                         change_to = 'RIGHT'
 
-            # Update direction
             if change_to != direction:
                 direction = change_to
 
-            # Move the snake
             if direction == 'UP':
                 snake_pos[1] -= 1
             elif direction == 'DOWN':
@@ -385,7 +809,6 @@ def main():
             elif direction == 'RIGHT':
                 snake_pos[0] += 1
 
-            # Snake body growing mechanism
             snake_body.insert(0, list(snake_pos))
             if snake_pos == food_pos:
                 score += 1
@@ -393,47 +816,27 @@ def main():
             else:
                 snake_body.pop()
 
-            # Spawn new food
             if not food_spawn:
-                food_pos = [
-                    random.randint(0, GRID_SIZE - 1),
-                    random.randint(0, GRID_SIZE - 1)
-                ]
+                food_pos = [random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)]
                 while food_pos in snake_body:
-                    food_pos = [
-                        random.randint(0, GRID_SIZE - 1),
-                        random.randint(0, GRID_SIZE - 1)
-                    ]
+                    food_pos = [random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)]
                 food_spawn = True
 
-            # Render background
             render_background()
 
-            # Draw the snake with rounded segments
             for segment in snake_body:
-                segment_rect = pygame.Rect(
-                    segment[0] * CELL_SIZE,
-                    segment[1] * CELL_SIZE,
-                    CELL_SIZE,
-                    CELL_SIZE
-                )
+                segment_rect = pygame.Rect(segment[0] * CELL_SIZE, segment[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE)
                 pygame.draw.rect(screen, SNAKE_COLOR, segment_rect, border_radius=CELL_SIZE // 2)
 
-            # Draw the food as a circle
-            food_center = (
-                food_pos[0] * CELL_SIZE + CELL_SIZE // 2,
-                food_pos[1] * CELL_SIZE + CELL_SIZE // 2
-            )
+            food_center = (food_pos[0] * CELL_SIZE + CELL_SIZE // 2, food_pos[1] * CELL_SIZE + CELL_SIZE // 2)
             pygame.draw.circle(screen, FOOD_COLOR, food_center, CELL_SIZE // 2)
 
-            # Check for collisions
             if (snake_pos[0] < 0 or snake_pos[0] >= GRID_SIZE or
                 snake_pos[1] < 0 or snake_pos[1] >= GRID_SIZE):
-                running = False  # Collision with wall
+                running = False
             if snake_pos in snake_body[1:]:
-                running = False  # Collision with self
+                running = False
 
-            # Display the score
             score_text = f'Score: {score}'
             text_position = (WINDOW_SIZE - 10 - font.size(score_text)[0], 10)
             draw_text(score_text, font, TEXT_COLOR, text_position)
@@ -441,20 +844,17 @@ def main():
             pygame.display.update()
             clock.tick(GAME_SPEED)
 
-        # Game over screen
         game_over(score)
 
 def game_over(score):
-    """Display the game over screen."""
+    """Display the game over screen for single player and allow retry."""
     global video_playing
-    video_playing = False  # Stop video playback during game over
+    video_playing = False
 
-    # Fade effect variables
     alpha_surface = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE))
     alpha_surface.fill((0, 0, 0))
     alpha = 0
 
-    # Animate fade-in
     while alpha < 180:
         alpha += 5
         alpha_surface.set_alpha(alpha)
@@ -462,41 +862,33 @@ def game_over(score):
         pygame.display.update()
         clock.tick(60)
 
-    # Game over loop
     game_over_screen = True
     while game_over_screen:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            # Return to main menu on 'R' key press
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
                     game_over_screen = False
                 elif event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
-        # Render background
         render_background()
-
-        # Darken the screen
         overlay = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE))
         overlay.set_alpha(180)
         overlay.fill((0, 0, 0))
         screen.blit(overlay, (0, 0))
 
-        # Display game over message
         game_over_text = 'Game Over'
         game_over_font = pygame.font.SysFont('Segoe UI', 50)
         game_over_position = (WINDOW_SIZE // 2 - game_over_font.size(game_over_text)[0] // 2, WINDOW_SIZE // 2 - 50)
         draw_text(game_over_text, game_over_font, FOOD_COLOR, game_over_position)
 
-        # Display final score
         final_score_text = f'Final Score: {score}'
         final_score_position = (WINDOW_SIZE // 2 - font.size(final_score_text)[0] // 2, WINDOW_SIZE // 2)
         draw_text(final_score_text, font, TEXT_COLOR, final_score_position)
 
-        # Display instruction to restart or exit
         restart_text = 'Press R to Restart or ESC to Exit'
         restart_position = (WINDOW_SIZE // 2 - font.size(restart_text)[0] // 2, WINDOW_SIZE // 2 + 50)
         draw_text(restart_text, font, TEXT_COLOR, restart_position)

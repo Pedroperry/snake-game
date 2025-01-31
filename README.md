@@ -66,8 +66,6 @@ python snake_game.py
    - Supports PNG, JPG, MP4, AVI formats
 
 3. **Secret Features**
-   - 7 consecutive clicks in credits unlocks dev mode
-   - Gold-colored menu highlights
    - Animated title screen snake
 
 ## 📝 Credits

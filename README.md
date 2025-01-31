@@ -10,7 +10,6 @@ A modern Python Snake game with customizable backgrounds, animated menus, and sm
 [![O1](https://img.shields.io/badge/Assisted%20by-O1_Model-important?style=flat&logo=openai&logoColor=white)](https://openai.com/o1/)
 
 
-![Game Over](https://github.com/user-attachments/assets/e28f6a0b-3604-4573-9dfe-cd71c68f0285)
 ## 🌟 Features
 
 1. **Customizable Backgrounds** 🎨
@@ -24,6 +23,8 @@ A modern Python Snake game with customizable backgrounds, animated menus, and sm
    - Collision detection (walls & self)
    - Progressive difficulty
    - Score tracking system
+   - -AI 1V1
+   - Local game
 
 3. **Modern UI** ✨
    - Animated main menu
